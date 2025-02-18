@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+} from '@nestjs/common';
 import { AuthDto, RegisterDto } from 'src/auth/dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as argon from 'argon2';
@@ -15,34 +20,46 @@ export class AuthService {
   ) {}
 
   async login(dto: AuthDto) {
-    // Find the email in the table
-    const user = await this.prisma.user.findFirst({
-      where: {
-        email: dto.email,
-      },
-    });
-    // If the user does not exist throw exception
-    if (!user) {
-      throw new ForbiddenException('Credentials incorrect');
+    try {
+      // Find the email in the table
+      const user = await this.prisma.user.findFirst({
+        where: {
+          email: dto.email,
+        },
+      });
+      // If the user does not exist throw exception
+      if (!user) {
+        throw new ForbiddenException('Credentials incorrect');
+      }
+
+      const { password, ...userDissect } = user;
+
+      const pwMatches = await argon.verify(password, dto.password);
+      if (!pwMatches) {
+        throw new ForbiddenException('Credentials incorrect');
+      }
+
+      return {
+        status: 200,
+        data: userDissect,
+        token: await this.signToken(
+          userDissect.id,
+          userDissect.email,
+          userDissect.type,
+        ),
+        message: 'Logged in succesfully',
+      };
+    } catch (error) {
+      if (error instanceof PrismaClientKnownRequestError) {
+        if (error.code === 'P2002') {
+          throw new HttpException(
+            'Internal Error',
+            HttpStatus.SERVICE_UNAVAILABLE,
+          );
+        }
+      }
+      throw error;
     }
-
-    const { password, ...userDissect } = user;
-
-    const pwMatches = await argon.verify(password, dto.password);
-    if (!pwMatches) {
-      throw new ForbiddenException('Credentials incorrect');
-    }
-
-    return {
-      status: 200,
-      data: userDissect,
-      token: await this.signToken(
-        userDissect.id,
-        userDissect.email,
-        userDissect.type,
-      ),
-      message: 'Logged in succesfully',
-    };
   }
 
   async register(dto: RegisterDto) {
