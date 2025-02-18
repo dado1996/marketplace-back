@@ -1,18 +1,27 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
-import { AuthDto, RegisterDto } from 'src/dto';
+import { AuthDto, RegisterDto } from 'src/auth/dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as argon from 'argon2';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable({})
 export class AuthService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private jwt: JwtService,
+    private config: ConfigService,
+  ) {}
+
   async login(dto: AuthDto) {
+    // Find the email in the table
     const user = await this.prisma.user.findFirst({
       where: {
         email: dto.email,
       },
     });
+    // If the user does not exist throw exception
     if (!user) {
       throw new ForbiddenException('Credentials incorrect');
     }
@@ -27,6 +36,11 @@ export class AuthService {
     return {
       status: 200,
       data: userDissect,
+      token: await this.signToken(
+        userDissect.id,
+        userDissect.email,
+        userDissect.type,
+      ),
       message: 'Logged in succesfully',
     };
   }
@@ -73,5 +87,18 @@ export class AuthService {
       }
       throw error;
     }
+  }
+
+  signToken(userId: number, email: string, type: string): Promise<string> {
+    const payload = {
+      sub: userId,
+      email,
+      type,
+    };
+
+    return this.jwt.signAsync(payload, {
+      expiresIn: '15m',
+      secret: this.config.get('JWT_SECRET'),
+    });
   }
 }
