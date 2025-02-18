@@ -23,16 +23,20 @@ model User {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   Product   Product[]
+
+  @@map("users")
 }
 
 model Product {
   id        Int      @id @default(autoincrement())
   name      String
-  sku       String
+  sku       String   @unique
   amount    Int
   price     Float
   userId    Int
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@map("products")
 }
